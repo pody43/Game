@@ -1,0 +1,319 @@
+Game02
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>小學堂物語 - Pro Action Edition</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'PingFang TC', sans-serif; touch-action: none; background: #000; }
+        #ui-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 10; }
+        .interactive { pointer-events: auto; }
+        
+        .action-pad { position: fixed; bottom: 30px; right: 30px; display: flex; flex-direction: column; gap: 15px; }
+        .action-btn { 
+            width: 70px; height: 70px; background: rgba(0,0,0,0.6); color: white; border-radius: 50%; 
+            display: flex; align-items: center; justify-content: center; font-size: 1.5rem; 
+            border: 3px solid rgba(255,255,255,0.3); backdrop-filter: blur(5px);
+        }
+        .action-btn:active { background: rgba(255,255,255,0.4); transform: scale(0.9); }
+
+        .status-bar { position: absolute; top: 20px; left: 20px; background: rgba(0,0,0,0.7); color: white; padding: 15px 25px; border-radius: 20px; backdrop-filter: blur(8px); }
+        
+        #loading-screen { position: fixed; top:0; left:0; width:100%; height:100%; background: radial-gradient(circle, #3b82f6, #1d4ed8); color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 1000; }
+        
+        .modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 30px; box-shadow: 0 20px 60px rgba(0,0,0,0.6); z-index: 100; text-align: center; width: 85%; max-width: 400px; }
+        
+        #enter-btn { 
+            display: none; position: fixed; bottom: 120px; left: 50%; transform: translateX(-50%); 
+            background: #facc15; color: #854d0e; padding: 20px 50px; border-radius: 50px; 
+            font-weight: 900; font-size: 1.5rem; border: 4px solid white; z-index: 50; 
+        }
+
+        .choice-btn { background: #f3f4f6; border: 3px solid #e5e7eb; padding: 15px; border-radius: 15px; font-weight: bold; font-size: 1.5rem; width: 100%; }
+    </style>
+</head>
+<body>
+
+<div id="loading-screen">
+    <h1 class="text-6xl font-black mb-6 text-center">🏫 小學堂物語</h1>
+    <div class="bg-white/10 p-8 rounded-3xl border border-white/20 w-85 text-center">
+        <p class="text-yellow-300 mb-8 font-bold text-lg leading-relaxed">
+            🕹️ 操作指南：<br>
+            • 跑：點擊地面移動<br>
+            • 跳：右下角 ⬆️ 按鈕<br>
+            • 蹲：右下角 ⬇️ 按鈕<br>
+            • 攻擊：右下角 ⚔️ 按鈕
+        </p>
+        <button onclick="startGame()" class="w-full bg-white text-blue-600 py-5 rounded-2xl font-black text-2xl shadow-xl transition-all active:scale-95">開始冒險 START</button>
+    </div>
+</div>
+
+<div id="ui-layer">
+    <div class="status-bar">
+        <div class="flex items-center gap-4 text-lg">
+            <span>❤️ <span id="hp-val">100</span></span>
+            <span>⚔️ <span id="atk-val">10</span></span>
+        </div>
+        <div class="text-blue-300 text-sm mt-2">💎 水晶: <span id="crystal-val">0</span> | 武器: <span id="weapon-name">拳頭</span></div>
+    </div>
+
+    <!-- 結束遊戲按鈕 -->
+    <button onclick="confirmExit()" class="interactive absolute top-4 right-4 bg-red-500 text-white px-4 py-2 rounded-lg font-bold shadow-lg">結束遊戲</button>
+
+    <button id="enter-btn" class="interactive" onclick="triggerEntry()">門口：進入建築</button>
+
+    <div class="action-pad interactive">
+        <button class="action-btn" onmousedown="startAttack()" ontouchstart="startAttack()">⚔️</button>
+        <div class="flex gap-4">
+            <button class="action-btn" onclick="triggerJump()">⬆️</button>
+            <button class="action-btn" onmousedown="startCrouch()" onmouseup="endCrouch()" ontouchstart="startCrouch()" ontouchend="endCrouch()">⬇️</button>
+        </div>
+    </div>
+</div>
+
+<!-- 彈窗系統 -->
+<div id="modal-refuge" class="modal interactive">
+    <h2 class="text-3xl font-black text-yellow-600 mb-4">休息室</h2>
+    <p class="mb-6 text-gray-600">正在恢復體力...</p>
+    <button onclick="leaveHouse()" class="w-full bg-yellow-500 text-white py-4 rounded-xl font-bold">離開</button>
+</div>
+
+<div id="modal-game" class="modal interactive">
+    <h2 class="text-3xl font-black text-pink-600 mb-4">字母小屋</h2>
+    <div id="alphabet-game">
+        <div id="game-q" class="text-7xl font-black text-pink-500 mb-8">A</div>
+        <div id="game-options" class="grid grid-cols-1 gap-3"></div>
+    </div>
+    <div id="game-success" class="hidden">
+        <p class="text-2xl font-bold text-green-500 mb-6">答對了！</p>
+        <button onclick="leaveHouse()" class="w-full bg-gray-200 py-4 rounded-xl font-bold">離開</button>
+    </div>
+</div>
+
+<!-- 退出確認視窗 -->
+<div id="modal-exit" class="modal interactive">
+    <h2 class="text-2xl font-black mb-4 text-gray-800">確定離開？</h2>
+    <p class="text-gray-500 mb-8">目前的進度將不會被儲存。</p>
+    <div class="grid grid-cols-2 gap-4">
+        <button onclick="executeExit()" class="bg-red-500 text-white py-4 rounded-xl font-bold shadow-md active:scale-95">確定</button>
+        <button onclick="document.getElementById('modal-exit').style.display='none'" class="bg-gray-200 text-gray-700 py-4 rounded-xl font-bold active:scale-95">取消</button>
+    </div>
+</div>
+
+<script>
+let scene, camera, renderer, clock, player, weaponGroup;
+let raycaster = new THREE.Raycaster();
+let mouse = new THREE.Vector2(), targetPos = null, inHouse = false;
+let monsters = [], houses = [], crystals = [];
+let gameState = { hp: 100, atk: 10, crystals: 0, isCrouching: false, isJumping: false, vVel: 0 };
+let legL, legR, body, head;
+let animationId = null;
+let isPlaying = false;
+
+function startGame() {
+    isPlaying = true;
+    document.getElementById('loading-screen').style.display = 'none';
+    if (!scene) {
+        init();
+        animate();
+    } else {
+        resetGame();
+    }
+}
+
+function init() {
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87ceeb);
+    scene.fog = new THREE.Fog(0x87ceeb, 20, 150);
+
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    document.body.appendChild(renderer.domElement);
+
+    clock = new THREE.Clock();
+    scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+    const sun = new THREE.DirectionalLight(0xffffff, 0.8);
+    sun.position.set(50, 100, 50);
+    scene.add(sun);
+
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(500, 500), new THREE.MeshPhongMaterial({ color: 0x7cfc00 }));
+    ground.rotation.x = -Math.PI / 2;
+    ground.name = "Ground";
+    scene.add(ground);
+
+    createPlayer();
+    buildMap();
+    spawnMonsters(5);
+
+    window.addEventListener('mousedown', onPointerDown);
+    window.addEventListener('touchstart', onPointerDown, { passive: false });
+    window.addEventListener('resize', onResize);
+}
+
+function createPlayer() {
+    player = new THREE.Group();
+    body = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1, 0.5), new THREE.MeshPhongMaterial({ color: 0x3b82f6 }));
+    body.position.y = 1.1;
+    head = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.6, 0.6), new THREE.MeshPhongMaterial({ color: 0xffdbac }));
+    head.position.y = 1.95;
+    const legGeo = new THREE.BoxGeometry(0.3, 0.7, 0.3);
+    const legMat = new THREE.MeshPhongMaterial({ color: 0x1d4ed8 });
+    legL = new THREE.Mesh(legGeo, legMat); legL.position.set(-0.25, 0.35, 0);
+    legR = new THREE.Mesh(legGeo, legMat); legR.position.set(0.25, 0.35, 0);
+    weaponGroup = new THREE.Group();
+    const fist = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.2, 0.2), new THREE.MeshPhongMaterial({color: 0xffdbac}));
+    fist.position.set(0.6, 1.2, 0.3);
+    weaponGroup.add(fist);
+    player.add(body, head, legL, legR, weaponGroup);
+    scene.add(player);
+}
+
+function buildMap() {
+    createHouse(-20, -30, 'refuge', 0xfacc15);
+    createHouse(20, -60, 'game', 0xf472b6);
+    for(let i=0; i<30; i++) {
+        const tree = new THREE.Group();
+        const t = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 2), new THREE.MeshPhongMaterial({color: 0x5d4037}));
+        const l = new THREE.Mesh(new THREE.ConeGeometry(1.5, 3, 8), new THREE.MeshPhongMaterial({color: 0x2e7d32}));
+        l.position.y = 2; tree.add(t, l);
+        tree.position.set(Math.random()*100-50, 1, Math.random()*150-100);
+        scene.add(tree);
+    }
+}
+
+function createHouse(x, z, type, color) {
+    const h = new THREE.Group();
+    const b = new THREE.Mesh(new THREE.BoxGeometry(10, 8, 10), new THREE.MeshPhongMaterial({color: color}));
+    const r = new THREE.Mesh(new THREE.ConeGeometry(9, 6, 4), new THREE.MeshPhongMaterial({color: 0x3e2723}));
+    r.position.y = 7; r.rotation.y = Math.PI/4; h.add(b, r);
+    h.position.set(x, 4, z); h.userData = { type }; houses.push(h); scene.add(h);
+}
+
+function spawnMonsters(n) {
+    monsters.forEach(m => scene.remove(m));
+    monsters = [];
+    for(let i=0; i<n; i++) {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(2, 3, 2), new THREE.MeshPhongMaterial({color: 0xef4444}));
+        m.position.set(Math.random()*80-40, 1.5, -Math.random()*100-40);
+        m.userData = { hp: 50 }; monsters.push(m); scene.add(m);
+    }
+}
+
+function triggerJump() { if (!gameState.isJumping && !gameState.isCrouching) { gameState.isJumping = true; gameState.vVel = 0.25; } }
+function startCrouch() { if (gameState.isJumping) return; gameState.isCrouching = true; body.scale.y = 0.5; body.position.y = 0.85; head.position.y = 1.4; weaponGroup.position.y = -0.4; }
+function endCrouch() { gameState.isCrouching = false; body.scale.y = 1.0; body.position.y = 1.1; head.position.y = 1.95; weaponGroup.position.y = 0; }
+
+function startAttack() {
+    weaponGroup.rotation.x = -Math.PI / 2;
+    setTimeout(() => { weaponGroup.rotation.x = 0; }, 150);
+    monsters.forEach((m, i) => {
+        if(player.position.distanceTo(m.position) < 5) {
+            m.userData.hp -= gameState.atk;
+            m.material.emissive.set(0xff0000);
+            setTimeout(() => m.material.emissive?.set(0x000000), 100);
+            if(m.userData.hp <= 0) { scene.remove(m); monsters.splice(i, 1); }
+        }
+    });
+}
+
+function update() {
+    if(!isPlaying) return;
+    if (targetPos && !gameState.isCrouching) {
+        const diff = new THREE.Vector3().subVectors(targetPos, player.position);
+        diff.y = 0;
+        if (diff.length() > 0.5) {
+            const move = diff.normalize().multiplyScalar(0.25);
+            player.position.add(move);
+            player.rotation.y = Math.atan2(move.x, move.z) + Math.PI;
+            const t = Date.now() * 0.01;
+            legL.rotation.x = Math.sin(t) * 1.2;
+            legR.rotation.x = -Math.sin(t) * 1.2;
+        } else {
+            targetPos = null; legL.rotation.x = 0; legR.rotation.x = 0;
+        }
+    }
+    if (gameState.isJumping) {
+        player.position.y += gameState.vVel; gameState.vVel -= 0.015;
+        if (player.position.y <= 0) { player.position.y = 0; gameState.isJumping = false; gameState.vVel = 0; }
+    }
+    camera.position.lerp(new THREE.Vector3(player.position.x, player.position.y + 12, player.position.z + 18), 0.1);
+    camera.lookAt(player.position);
+
+    let found = null;
+    houses.forEach(h => { if(player.position.distanceTo(h.position) < 8) found = h; });
+    document.getElementById('enter-btn').style.display = found ? 'block' : 'none';
+    if(found) window.nearbyHouse = found;
+}
+
+function animate() {
+    animationId = requestAnimationFrame(animate);
+    update();
+    renderer.render(scene, camera);
+}
+
+function onPointerDown(e) {
+    if (!isPlaying || e.target.closest('.interactive')) return;
+    const x = e.touches ? e.touches[0].clientX : e.clientX;
+    const y = e.touches ? e.touches[0].clientY : e.clientY;
+    mouse.x = (x / window.innerWidth) * 2 - 1;
+    mouse.y = -(y / window.innerHeight) * 2 + 1;
+    raycaster.setFromCamera(mouse, camera);
+    const hits = raycaster.intersectObject(scene.getObjectByName("Ground"));
+    if (hits.length > 0) targetPos = hits[0].point;
+}
+
+function triggerEntry() { inHouse = true; document.getElementById('modal-' + window.nearbyHouse.userData.type).style.display = 'block'; if(window.nearbyHouse.userData.type === 'game') initAlphabetGame(); }
+function leaveHouse() { inHouse = false; document.querySelectorAll('.modal').forEach(m => m.style.display = 'none'); player.position.z += 15; targetPos = null; }
+
+function initAlphabetGame() {
+    const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    const ans = letters[Math.floor(Math.random()*26)];
+    document.getElementById('game-q').innerText = ans;
+    const container = document.getElementById('game-options'); container.innerHTML = '';
+    document.getElementById('game-success').classList.add('hidden');
+    document.getElementById('alphabet-game').classList.remove('hidden');
+    [ans.toLowerCase(), letters[Math.floor(Math.random()*26)].toLowerCase(), letters[Math.floor(Math.random()*26)].toLowerCase()].sort(()=>Math.random()-0.5).forEach(o => {
+        const b = document.createElement('button'); b.className = "choice-btn"; b.innerText = o;
+        b.onclick = () => { if(o === ans.toLowerCase()) { document.getElementById('alphabet-game').classList.add('hidden'); document.getElementById('game-success').classList.remove('hidden'); gameState.atk += 2; updateUI(); }};
+        container.appendChild(b);
+    });
+}
+
+function updateUI() { document.getElementById('hp-val').innerText = gameState.hp; document.getElementById('atk-val').innerText = gameState.atk; }
+function onResize() { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); }
+
+// 退出邏輯修復
+function confirmExit() { 
+    document.getElementById('modal-exit').style.display = 'block'; 
+}
+
+function executeExit() {
+    isPlaying = false;
+    // 隱藏所有彈窗
+    document.querySelectorAll('.modal').forEach(m => m.style.display = 'none');
+    // 顯示初始畫面
+    document.getElementById('loading-screen').style.display = 'flex';
+    // 嘗試關閉分頁（雖通常會被瀏覽器攔截，但作為預留功能）
+    window.close();
+    // 如果分頁沒關閉，重置遊戲狀態
+    resetGame();
+}
+
+function resetGame() {
+    gameState = { hp: 100, atk: 10, crystals: 0, isCrouching: false, isJumping: false, vVel: 0 };
+    updateUI();
+    player.position.set(0, 0, 0);
+    targetPos = null;
+    spawnMonsters(5);
+}
+</script>
+</body>
+</html>
+
+```
+
